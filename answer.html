@@ -1,0 +1,220 @@
+<html>
+<script src="./util.js"></script>
+<style>
+    .modal {
+        display: none;
+        /* Hidden by default */
+        position: fixed;
+        /* Stay in place */
+        z-index: 1;
+        /* Sit on top */
+        left: 0;
+        top: 0;
+        width: 100%;
+        /* Full width */
+        height: 100%;
+        /* Full height */
+        overflow: auto;
+        /* Enable scroll if needed */
+        background-color: rgb(0, 0, 0);
+        /* Fallback color */
+        background-color: rgba(0, 0, 0, 0.4);
+        /* Black w/ opacity */
+    }
+
+    .modal-content {
+        background-color: #fefefe;
+        margin: 15% auto;
+        /* 15% from the top and centered */
+        padding: 20px;
+        border: 1px solid #888;
+        width: 80%;
+        /* Could be more or less, depending on screen size */
+    }
+
+    .modal-body {
+        padding: 2px 16px;
+    }
+
+    .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+    }
+
+    .close:hover,
+    .close:focus {
+        color: black;
+        text-decoration: none;
+        cursor: pointer;
+    }
+</style>
+
+<body>
+    <h1>Answer the following</h1>
+    <form id="questions" action>
+    </form>
+    <input type="submit" onclick="submit()" value="Submit">
+
+    <!-- The Modal -->
+    <div id="failed_api" class="modal">
+
+        <!-- Modal content -->
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <p id="failed_api_message"></p>
+        </div>
+
+    </div>
+
+    <!-- The Modal -->
+    <div id="result_score" class="modal">
+
+        <!-- Modal content -->
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <p id="result_score_message"></p>
+        </div>
+
+    </div>
+
+
+    <script>
+        let failed_api_modal = document.getElementById("failed_api")
+        let result_modal = document.getElementById("result_score")
+        let questionForm = document.getElementById("questions")
+        let total_point = 0
+
+        Promise.all([getData("user/answers"), getData("questions")])
+            .then(resp => {
+                if (!resp[0].ok) {
+                    if (resp[0].status == 401) {
+                        document.getElementById("failed_api_message").innerHTML = "logged out, please login again"
+                        document.getElementById("failed_api_message").appendChild(document.createElement("br"))
+                        document.getElementById("failed_api_message").appendChild(document.createElement("br"))
+                        const loginLink = document.createElement("a")
+                        loginLink.setAttribute("href", "./index.html")
+                        loginLink.appendChild(document.createTextNode("login"))
+                        document.getElementById("failed_api_message").appendChild(loginLink)
+                        failed_api_modal.style.display = "block"
+                        return
+                    }
+                    resp[0].text().then(errText => {
+                        document.getElementById("failed_api_message").innerHTML = errText
+                        failed_api_modal.style.display = "block"
+                    })
+                    return
+                }
+                if (!resp[1].ok) {
+                    resp[1].text().then(errText => {
+                        document.getElementById("failed_api_message").innerHTML = errText
+                        failed_api_modal.style.display = "block"
+                    })
+                    return
+                }
+                Promise.all([resp[0].json(), resp[1].json()]).then(data => {
+                    [answers, questions] = data
+
+                    answersByQID = {}
+                    answers.forEach(a => {
+                        answersByQID[a.question_id] = a.choice
+                    })
+                    console.log(answersByQID)
+                    console.log(questions)
+
+                    questionSections = {}
+                    questions.forEach(q => {
+                        if (!questionSections[q.question_section_id]) {
+                            questionSections[q.question_section_id] = { name: q.question_section_name, questions: [] }
+                        }
+                        questionSections[q.question_section_id].questions.push(q)
+                    });
+
+                    for (const scetionID in questionSections) {
+                        const questionSectionDiv = document.createElement("div")
+
+                        const sectionTitle = document.createElement("h2")
+                        sectionTitle.appendChild(document.createTextNode(questionSections[scetionID].name))
+
+                        questionSectionDiv.appendChild(sectionTitle)
+
+                        questionSections[scetionID].questions.forEach(q => {
+                            const qText = document.createElement("h4")
+                            qText.appendChild(document.createTextNode(q.question))
+                            questionSectionDiv.appendChild(qText)
+
+                            for (const choiceKey in q.choices) {
+                                const choiceInput = document.createElement("input")
+                                choiceInput.setAttribute('class', 'choice-button')
+                                choiceInput.setAttribute('type', 'radio')
+                                choiceInput.setAttribute('name', q.id)
+                                choiceInput.setAttribute('value', choiceKey)
+                                if (answersByQID[q.id] && answersByQID[q.id] === choiceKey) {
+                                    choiceInput.setAttribute('checked', 'checked')
+                                }
+                                questionSectionDiv.appendChild(choiceInput)
+                                questionSectionDiv.appendChild(document.createTextNode(q.choices[choiceKey].value))
+                                questionSectionDiv.appendChild(document.createElement("br"))
+                            }
+                        })
+                        questionForm.appendChild(questionSectionDiv)
+                    }
+                })
+
+            })
+
+        var radios = document.getElementsByClassName('choice-button');
+
+
+        function submit() {
+            score = 0
+            let answers = []
+            answers.push()
+            for (var i = 0, length = radios.length; i < length; i++) {
+                if (radios[i].checked) {
+                    answers.push({
+                        question_id: radios[i].name,
+                        choice: radios[i].value,
+                    })
+                    score += radios[0]
+                }
+            }
+            postData("user/answers", answers).then(resp => {
+                if (!resp.ok) {
+                    resp.text().then(errText => {
+                        // TODO: Use a proper logger and log collector
+                        console.log(errText);
+                    })
+                } else {
+                    resp.json().then(result => {
+                        console.log(result)
+                        document.getElementById("result_score_message").innerHTML = `you scored ${result.Score} out of ${result.Total}`
+                        result_modal.style.display = 'block'
+                    })
+                }
+            })
+        }
+
+        let modalClose = document.getElementsByClassName("close")[0];
+        let modalClose2 = document.getElementsByClassName("close")[0];
+
+        modalClose.onclick = function () {
+            modal.style.display = "none";
+        }
+
+
+        modalClose2.onclick = function () {
+            modal.style.display = "none";
+        }
+
+        window.onclick = function (event) {
+            if (event.target == failed_api_modal || event.target == result_modal) {
+                failed_api_modal.style.display = "none";
+                result_modal.style.display = "none";
+            }
+        }
+    </script>
+</body>
+
+</html>
